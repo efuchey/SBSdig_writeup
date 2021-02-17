@@ -1,15 +1,91 @@
 \section{Simulation digitization}
 
-\subsection{Description and features of libsbsdig }
+\subsection{Description and features of libsbsdig}
+
+The currently developped version of libsbsdig is a standalone program which uses the information from g4sbs to produce realistic ADC and TDC values from the detector.
+Similarly to g4sbs, the output ADC and TDC values are stored as series of stl vectors
+The necessary input to operate this program is fairly simple:
+%
+\begin{itemize}
+\item{one unique configuration file to setup all the detectors tunable parameters (i.e. gains, pedestals means and widths, thresholds, number of ADC and TDC bits...}
+\item{one text file to list the g4sbs input files.}
+\item{optionally one input root file storing background histograms (see section~\ref{bkgdadd})}
+\end{itemize}
+%
+A more complete documentation is available on\\
+{https://redmine.jlab.org/projects/sbs-software/wiki/Documentation\_of\_libsbsdig}
 
 \subsection{Digitization algorithms}
+\label{digalgo}
+
+In this section we detail the algorithms which are used to digitize
 
 \subsubsection{GEMs}
 
+The digitization algorithm for the GEMs can be decomposed into four main steps.
+%
+\paragraph{Step~1: Ionization}
+During this step we perform the following actions:
+%
+\begin{itemize}
+\item{Use the energy deposit to estimate the number of ions generated;}
+\item{Distribute these ions uniformly between $x_{in}$, $y_{in}$, $z_{in}$ and $x_{out}$, $y_{out}$, $z_{out}$;}
+\end{itemize}
+%
+\paragraph{Step~2: Avalanche}
+%
+In this step we simulate the avalanche for each of these ions, according to a Cauchy-Lorentz function (which width will depend on the speed of diffusion of the ions in the gas, etc, and the amplitude will depend on the gain);
+%
+\paragraph{Step~3: Numerical integration of the avalanche}
+In this step we numerically integrate the avalanche on each of the strips: the integrated charge normalizes a pulse function $f(t) = C (t-t_0)/\tau^2 exp(-(t-t_0)/\tau)$. (where $\tau$ = 56ns and $t_0$ depends on the time of the hit registered by g4sbs)
+This function is then integrated on the six 25ns samples and converted into ADC values.
+%
+\paragraph{Step~4: Pedestal addition and saturation}
+The pedestal is added on top of the ADC value for each of the sample. The pedestal value is indicated in the configuration file, and the pedestal width is typically $\sigma$ = 20 ADC.
+The total ADC value is then capped to the maximal ADC value which for the APV chips is $2^{12} = 4096$ to simulate ADC saturation.
+
+Note: In the full background case, steps 1, 2, 3 are repeated for the background hits before applying the pedestal and the saturation.
+
+
 \subsubsection{PMT detectors}
 
-\paragraph{with ADC only}
+The digitization algorithm for the PMT detectos can be decomposed into four main steps. There is a bit of variability depending on the readout electronics (if it uses TDCs or not).
 
-\paragraph{with TDCs}
+\paragraph{Step~1: Number of photoelectrons estimation}
+The number of photoelectrons is from the energy deposit. This estimation depends on the detector e.g. for the timing hodoscope or the HCal, there is a dependence of the light yield on the hit position; The number of photoelectrons multiplied by the PMT gain is used to normalize a pulse function  $f(t) = C (t-t_0)/\sigma^2 exp(-(t-t_0)/\sigma)$ where $\sigma$ is the FWHM of the PMT provided in the configuration file.
+%add in details
+
+\paragraph{Step~2: Timing estimation for TDCs}
+If the DAQ involves TDCs, the pulse is compared to the threshold (provided in the configuration file).
+If the pulse crosses the threshold, the leading and 
+trailing times are recorded.
+%add in figure
+
+\paragraph{Step~3: ADC/TDCs conversion}
+The integral of the pulse is converted into ADC values; 
+the times are converted into TDC values; In the case of HCal 
+(readout by FADC 250), the pulse is integrated on 4ns ADC samples 
+
+\paragraph{Step~4: }
+
+4th step: apply a pedestal on the ADC value(s). The mean and width of the pedestal is provided in the configuration file;
+The total ADC value is then capped to the maximal ADC value  $2^{ADC\_bits}$ (with $ADC\_bits$ provided in the configuration file) to simulate ADC saturation.
+
+Note: In the full background case, steps 1, 2, 3 are repeated for the background hits before applying the pedestal and the saturation.
 
 \subsection{Background addition}
+\label{bkgdadd}
+
+The first step for the background addition is a ``pre-processing'' of beam-on-target g4sbs files to generate background histograms for:
+%
+\begin{itemize}
+\item{hit multiplicity (within a certain time window);}
+\item{distribution of hit position;}
+\item{energy deposit}
+\item{number of photoelectrons (when applicable);}
+\end{itemize}
+%
+These histograms are fed as an input to sbsdig, which uses them to (re)generate hits by sampling
+those histograms.
+These hits time is distributed uniformly within the detector time window.
+Once those hits are generated, they are processed and superimposed to the signal hits (see section~\ref{digalgo}).
